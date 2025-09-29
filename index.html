@@ -2,12 +2,32 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Voiceflow + Push-to-Talk (Stable Bundle)</title>
+  <title>Voiceflow + Push-to-Talk (Widget-Next + Fake Input)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     html, body { margin:0; font-family: system-ui, sans-serif; background:#0f172a; color:#e5e7eb; }
     h1 { margin: 10px; font-weight: 600; }
-    #vf-chat { height: 75vh; min-height: 520px; background:#0b1220; border-radius: 12px; margin: 10px; overflow: hidden; }
+    #vf-chat { height: 70vh; min-height: 520px; background:#0b1220; border-radius: 12px; margin: 10px; overflow: hidden; position: relative; }
+
+    /* Fake input overlay */
+    #fake-input {
+      position: absolute;
+      left: 12px; right: 12px; bottom: 12px;
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 14px;
+      color: #f9fafb;
+      min-height: 20px;
+      pointer-events: none; /* so clicks pass through to widget */
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      font-family: inherit;
+      white-space: pre-wrap;
+    }
+    #fake-input.show { opacity: 0.9; }
+
     /* Mic button */
     .ptt-btn { position: fixed; right: 20px; bottom: 20px; z-index: 9999;
       width: 56px; height: 56px; border-radius: 50%; border: none; cursor: pointer;
@@ -18,83 +38,101 @@
   </style>
 </head>
 <body>
-  <h1>Voiceflow Chat (Stable + Push-to-Talk)</h1>
+  <h1>Voiceflow Chat (Widget-Next + Push-to-Talk)</h1>
   <p style="margin:0 10px 6px;color:#9ca3af;">Hold <kbd>Space</kbd> to talk, or click the mic button.</p>
-  <div id="vf-chat"></div>
+  <div id="vf-chat">
+    <div id="fake-input"></div>
+  </div>
 
-  <!-- Stable widget bundle -->
-  <script type="module" src="https://cdn.voiceflow.com/widget/bundle.mjs"></script>
-  <script>
-    window.voiceflow?.chat?.load({
-      verify: { projectID: "68d9f429d1409c6c304d5485" },
-      url: "https://general-runtime.voiceflow.com",
-      versionID: "68d9f429d1409c6c304d5486",
-      render: { mode: "embedded", target: document.getElementById("vf-chat") },
-      autostart: true
-    });
+  <!-- Voiceflow widget-next loader -->
+  <script type="text/javascript">
+    (function(d, t) {
+      var v = d.createElement(t), s = d.getElementsByTagName(t)[0];
+      v.onload = function() {
+        window.voiceflow.chat.load({
+          verify: { projectID: '68d9f429d1409c6c304d5485' },
+          url: 'https://general-runtime.voiceflow.com',
+          versionID: '68d9f429d1409c6c304d5486',
+          voice: { url: 'https://runtime-api.voiceflow.com' },
+          render: { mode: 'embedded', target: document.getElementById('vf-chat') },
+          autostart: true
+        });
+      };
+      v.src = 'https://cdn.voiceflow.com/widget-next/bundle.mjs';
+      v.type = 'text/javascript';
+      s.parentNode.insertBefore(v, s);
+    })(document, 'script');
   </script>
 
-  <!-- Push-to-Talk -->
+  <!-- Push-to-Talk (API + Fake Input) -->
   <script>
-    (function(){
+    (function () {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if(!SR){ console.warn('Web Speech API not supported'); return; }
+      if (!SR) { console.warn('Web Speech API not supported. Use Chrome/Edge.'); return; }
 
-      let rec, isRec=false, finalText='';
+      let isRecording = false, rec = null, finalText = '', interimText = '';
 
-      const btn=document.createElement('button');
-      btn.className='ptt-btn'; btn.textContent='🎤';
+      // UI elements
+      const btn = document.createElement('button');
+      btn.className = 'ptt-btn'; btn.title = 'Push-to-Talk'; btn.innerHTML = '🎤';
       document.body.appendChild(btn);
 
-      function getEls(){
-        const root=document.getElementById('vf-chat');
-        return {
-          input: root.querySelector('textarea, [role="textbox"]'),
-          send: root.querySelector('button[aria-label="Send"],button[type="submit"]')
-        };
+      const fakeInput = document.getElementById('fake-input');
+
+      function showInput(text) {
+        fakeInput.textContent = text || '';
+        fakeInput.classList.toggle('show', !!text);
       }
 
-      function setInput(text){
-        const {input}=getEls();
-        if(input){
-          input.value=text;
-          input.dispatchEvent(new Event('input',{bubbles:true}));
+      function sendDirect(msg) {
+        try {
+          window.voiceflow.chat.send({ type: 'message', payload: { message: msg } });
+        } catch (e) {
+          console.warn('voiceflow.chat.send failed:', e);
         }
       }
 
-      function clickSend(){
-        const {send}=getEls();
-        if(send) send.click();
-      }
+      function start() {
+        if (isRecording) return;
+        isRecording = true; finalText = ''; interimText = '';
+        rec = new SR(); rec.lang = 'en-AU'; rec.interimResults = true; rec.continuous = true;
 
-      function start(){
-        if(isRec) return;
-        isRec=true; finalText='';
-        rec=new SR(); rec.lang='en-AU'; rec.interimResults=true; rec.continuous=true;
-        rec.onresult=e=>{
-          let interim='';
-          for(let i=e.resultIndex;i<e.results.length;i++){
-            const seg=e.results[i][0].transcript;
-            if(e.results[i].isFinal) finalText+=seg+' ';
-            else interim+=seg;
+        rec.onresult = (e) => {
+          interimText = '';
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const seg = e.results[i][0].transcript;
+            if (e.results[i].isFinal) finalText += seg + ' ';
+            else interimText += seg;
           }
-          setInput((finalText+interim).trim());
+          showInput((finalText + interimText).trim());
         };
-        rec.onend=()=>{ if(isRec) stop(); };
-        rec.start(); btn.classList.add('rec');
+        rec.onerror = () => stop(true);
+        rec.onend = () => { if (isRecording) stop(); };
+
+        try { rec.start(); btn.classList.add('rec'); }
+        catch { isRecording = false; }
       }
 
-      function stop(){
-        if(!isRec) return;
-        isRec=false; try{rec.stop();}catch{}
-        const text=finalText.trim();
-        if(text){ setInput(text); clickSend(); }
-        btn.classList.remove('rec'); finalText='';
+      function stop(force=false) {
+        if (!isRecording && !force) return;
+        isRecording = false; btn.classList.remove('rec');
+        try { rec && rec.stop(); } catch {}
+        const text = (finalText || interimText || '').trim();
+        if (text) sendDirect(text);
+        showInput('');
+        rec = null; finalText = ''; interimText = '';
       }
 
-      addEventListener('keydown',e=>{ if(e.code==='Space'&&!e.repeat){ e.preventDefault(); start(); } }, {passive:false});
-      addEventListener('keyup',e=>{ if(e.code==='Space'){ e.preventDefault(); stop(); } }, {passive:false});
-      btn.onclick=()=> isRec?stop():start();
+      function isTyping() {
+        const ae = document.activeElement; if (!ae) return false;
+        const tag = (ae.tagName||'').toLowerCase();
+        return ae.isContentEditable || tag==='textarea' || (tag==='input' && /text|search|email|tel|url/i.test(ae.type||'text'));
+      }
+
+      // Spacebar + mic button toggle
+      addEventListener('keydown',(e)=>{ if (e.code==='Space' && !e.repeat && !isTyping()){ e.preventDefault(); start(); } }, {passive:false});
+      addEventListener('keyup',(e)=>{ if (e.code==='Space'){ e.preventDefault(); stop(); } }, {passive:false});
+      btn.addEventListener('click', () => (isRecording ? stop() : start()));
     })();
   </script>
 </body>
