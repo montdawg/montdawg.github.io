@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Voiceflow + Push-to-Talk</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    #app { display: grid; place-items: center; height: 100%; background: #0f172a; color: #e5e7eb; }
+    .card {
+      width: min(900px, 96vw);
+      background: #111827; border-radius: 16px; padding: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.35);
+      border: 1px solid #1f2937;
+    }
+    .title { display:flex; align-items:center; gap:10px; margin:0 0 8px; font-weight:600; }
+    .muted { color:#9ca3af; font-size: 14px; margin: 0 0 12px; }
+    #vf-chat { height: 70vh; min-height: 540px; background:#0b1220; border-radius:12px; overflow:hidden; }
+    /* Floating mic button */
+    .ptt-btn {
+      position: fixed; right: 20px; bottom: 20px; z-index: 999999;
+      width: 56px; height: 56px; border-radius: 50%; border: none; cursor: pointer;
+      background: #2563eb; color: white; display:flex; align-items:center; justify-content:center;
+      font-size: 24px; box-shadow: 0 8px 24px rgba(0,0,0,.35);
+    }
+    .ptt-btn.rec { background: #ef4444; animation: pulse 1.2s infinite; }
+    @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(239,68,68,.6)} 70%{box-shadow:0 0 0 16px rgba(239,68,68,0)} 100%{box-shadow:0 0 0 0 rgba(239,68,68,0)} }
+    /* Tiny HUD */
+    .hud {
+      position: fixed; right: 86px; bottom: 30px; z-index: 999999;
+      background: rgba(0,0,0,.85); color: #fff; padding: 8px 10px; border-radius: 10px;
+      font-size: 12px; opacity: 0; transition: opacity .15s ease; pointer-events: none;
+    }
+    .hud.show { opacity: .95; }
+    .kbd { font: 600 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; background:#111827; border:1px solid #374151; border-radius:6px; padding:2px 6px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="card">
+      <h1 class="title">Voiceflow Chat (with Push-to-Talk)</h1>
+      <p class="muted">Hold <span class="kbd">Space</span> to talk, or click the mic button (bottom-right).</p>
+      <div id="vf-chat"></div>
+    </div>
+  </div>
+
+  <!-- Voiceflow Web Chat -->
+  <script type="module" src="https://cdn.voiceflow.com/widget/bundle.mjs"></script>
+  <script>
+    // Load the Voiceflow widget (embed mode)
+    window.voiceflow?.chat?.load({
+      verify: { projectID: "YOUR_PROJECT_ID_HERE" },         // ← paste your projectID
+      url: "https://general-runtime.voiceflow.com",
+      versionID: "YOUR_VERSION_ID_HERE",                      // or "production" (omit if not needed)
+      render: { mode: "embedded", target: document.getElementById("vf-chat") },
+      autostart: true
+    });
+  </script>
+
+  <!-- Push-to-Talk (Spacebar + Floating Mic Button) -->
+  <script>
+    (function () {
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRec) {
+        console.warn('Web Speech API not supported (use Chrome/Edge desktop).');
+      }
+
+      const LANGUAGE = 'en-AU';
+      const AUTO_SEND = true;               // send after stop
+      const FILL_ONLY_IF_EMPTY = false;     // if true, won’t overwrite existing text
+
+      let isRecording = false, rec = null, finalText = '';
+
+      // Floating mic button
+      const btn = document.createElement('button');
+      btn.className = 'ptt-btn';
+      btn.title = 'Push-to-Talk';
+      btn.setAttribute('aria-label', 'Push to talk');
+      btn.innerHTML = '🎤';
+      document.body.appendChild(btn);
+
+      // HUD
+      const hud = document.createElement('div');
+      hud.className = 'hud';
+      hud.textContent = '● Recording… release Space or click to stop';
+      document.body.appendChild(hud);
+      const showHUD = s => hud.classList.toggle('show', !!s);
+
+      function getChatElements() {
+        const root = document.querySelector('#vf-chat, .vf-chat, [data-vf-chat]') || document;
+        const input = root.querySelector('textarea, [contenteditable="true"][role="textbox"], [role="textbox"]') || document.querySelector('textarea');
+        const send = root.querySelector('button[aria-label="Send"], button[data-testid="send-button"], button[type="submit"]');
+        return { input, send };
+      }
+
+      function setInput(text) {
+        const { input } = getChatElements(); if (!input) return false;
+        const cur = ('value' in input) ? input.value : (input.textContent || '');
+        if (FILL_ONLY_IF_EMPTY && cur.trim()) return true;
+        if ('value' in input) {
+          input.value = text;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        } else {
+          input.textContent = text;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        return true;
+      }
+
+      function clickSend() {
+        const { input, send } = getChatElements();
+        if (send) { send.click(); return true; }
+        if (input) { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true })); return true; }
+        return false;
+      }
+
+      function start() {
+        if (!SpeechRec || isRecording) return;
+        isRecording = true; finalText = '';
+        rec = new SpeechRec();
+        rec.lang = LANGUAGE; rec.interimResults = true; rec.continuous = true;
+
+        rec.onresult = (e) => {
+          let interim = '';
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const seg = e.results[i][0].transcript;
+            if (e.results[i].isFinal) finalText += seg + ' ';
+            else interim += seg;
+          }
+          setInput((finalText + interim).trim());
+        };
+        rec.onerror = () => stop(true);
+        rec.onend = () => { if (isRecording) stop(); };
+
+        try { rec.start(); btn.classList.add('rec'); showHUD(true); } catch (err) { console.warn(err); isRecording=false; showHUD(false); }
+      }
+
+      function stop(force = false) {
+        if (!isRecording && !force) return;
+        isRecording = false; showHUD(false); btn.classList.remove('rec');
+        try { rec && rec.stop(); } catch {}
+        const text = (finalText || '').trim();
+        if (text) { setInput(text); if (AUTO_SEND) clickSend(); }
+        rec = null; finalText = '';
+      }
+
+      function isTyping() {
+        const ae = document.activeElement; if (!ae) return false;
+        const tag = (ae.tagName || '').toLowerCase();
+        return ae.isContentEditable || tag === 'textarea' || (tag === 'input' && /text|search|email|tel|url/i.test(ae.type || 'text'));
+      }
+
+      // Hold Space to talk
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' && !e.repeat && !isTyping()) {
+          e.preventDefault(); start();
+        }
+      }, { passive: false });
+
+      window.addEventListener('keyup', (e) => {
+        if (e.code === 'Space') {
+          e.preventDefault(); stop();
+        }
+      }, { passive: false });
+
+      // Click mic to toggle
+      btn.addEventListener('click', () => (isRecording ? stop() : start()));
+    })();
+  </script>
+</body>
+</html>
