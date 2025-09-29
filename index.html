@@ -45,16 +45,22 @@
 
   <!-- Voiceflow Web Chat -->
   <script type="module" src="https://cdn.voiceflow.com/widget/bundle.mjs"></script>
-  <script>
-    // Load the Voiceflow widget (embed mode)
-    window.voiceflow?.chat?.load({
-      verify: { projectID: "68d9f429d1409c6c304d5485" },         // ← paste your projectID
-      url: "https://general-runtime.voiceflow.com",
-      versionID: "Production",                      // or "production" (omit if not needed)
-      render: { mode: "embedded", target: document.getElementById("vf-chat") },
-      autostart: true
-    });
-  </script>
+  <script type="text/javascript">
+  (function(d, t) {
+      var v = d.createElement(t), s = d.getElementsByTagName(t)[0];
+      v.onload = function() {
+        window.voiceflow.chat.load({
+          verify: { projectID: '68d9f429d1409c6c304d5485' },
+          url: 'https://general-runtime.voiceflow.com',
+          versionID: 'production',
+          voice: {
+            url: "https://runtime-api.voiceflow.com"
+          }
+        });
+      }
+      v.src = "https://cdn.voiceflow.com/widget-next/bundle.mjs"; v.type = "text/javascript"; s.parentNode.insertBefore(v, s);
+  })(document, 'script');
+</script>
 
   <!-- Push-to-Talk (Spacebar + Floating Mic Button) -->
   <script>
