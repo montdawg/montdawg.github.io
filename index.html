@@ -12,7 +12,6 @@
     .muted { color:#9ca3af; font-size:14px; margin:0 0 12px; }
     #vf-chat { height:70vh; min-height:540px; background:#0b1220; border-radius:12px; overflow:hidden; }
 
-    /* mic button + HUD */
     .ptt-btn{position:fixed;right:20px;bottom:20px;z-index:999999;width:56px;height:56px;border-radius:50%;border:none;cursor:pointer;background:#2563eb;color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
     .ptt-btn.rec{background:#ef4444;animation:pulse 1.2s infinite}
     @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(239,68,68,.6)}70%{box-shadow:0 0 0 16px rgba(239,68,68,0)}100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}}
@@ -30,13 +29,13 @@
     </div>
   </div>
 
-  <!-- Voiceflow widget (stable bundle, embedded into #vf-chat) -->
+  <!-- Voiceflow widget (stable bundle, embedded) -->
   <script type="module" src="https://cdn.voiceflow.com/widget/bundle.mjs"></script>
   <script>
     window.voiceflow?.chat?.load({
-      verify: { projectID: "68d9f429d1409c6c304d5485" },   // your projectID
+      verify: { projectID: "68d9f429d1409c6c304d5485" },
       url: "https://general-runtime.voiceflow.com",
-      versionID: "68d9f429d1409c6c304d5486",               // your versionID
+      versionID: "68d9f429d1409c6c304d5486",
       render: { mode: "embedded", target: document.getElementById("vf-chat") },
       autostart: true
     });
@@ -131,4 +130,3 @@
   </script>
 </body>
 </html>
-
