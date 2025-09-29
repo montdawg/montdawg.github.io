@@ -2,70 +2,134 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Voiceflow + Push-to-Talk (stable bundle)</title>
+  <title>Voiceflow + Push-to-Talk (widget-next)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-    #vf-chat { height: 75vh; min-height: 520px; background:#0b1220; border-radius:12px; margin: 10px; }
-    .ptt-btn{position:fixed;right:20px;bottom:20px;z-index:9999;width:56px;height:56px;border-radius:50%;border:none;cursor:pointer;background:#2563eb;color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
-    .ptt-btn.rec{background:#ef4444}
+    html, body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#0f172a; color:#e5e7eb; }
+    h1 { margin: 10px; font-weight: 600; }
+    #vf-chat { height: 75vh; min-height: 520px; background:#0b1220; border-radius: 12px; margin: 10px; overflow: hidden; }
+    /* PTT button */
+    .ptt-btn { position: fixed; right: 20px; bottom: 20px; z-index: 999999;
+      width: 56px; height: 56px; border-radius: 50%; border: none; cursor: pointer;
+      background: #2563eb; color: #fff; display:flex; align-items:center; justify-content:center;
+      font-size: 24px; box-shadow: 0 8px 24px rgba(0,0,0,.35) }
+    .ptt-btn.rec { background:#ef4444; animation:pulse 1.2s infinite }
+    @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(239,68,68,.6)} 70%{box-shadow:0 0 0 16px rgba(239,68,68,0)} 100%{box-shadow:0 0 0 0 rgba(239,68,68,0)} }
+    /* transcript HUD */
+    .hud { position: fixed; right: 86px; bottom: 30px; z-index: 999999; max-width: 44ch;
+      background: rgba(0,0,0,.85); color: #fff; padding: 8px 10px; border-radius: 10px; font-size: 12px; opacity: 0;
+      transition: opacity .15s ease; pointer-events: none; white-space: pre-wrap; }
+    .hud.show { opacity: .95 }
+    .kbd { font: 600 12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; background:#111827; border:1px solid #374151; border-radius:6px; padding:2px 6px }
   </style>
 </head>
-<body style="margin:0;background:#0f172a;color:#e5e7eb;">
-  <h1 style="padding:10px 12px;font-weight:600">Voiceflow Chat (Stable + PTT)</h1>
+<body>
+  <h1>Voiceflow Chat (Widget-Next + Push-to-Talk)</h1>
+  <p style="margin:0 10px 6px;color:#9ca3af;">Hold <span class="kbd">Space</span> to talk, or click the mic button.</p>
   <div id="vf-chat"></div>
 
-  <!-- Stable bundle -->
-  <script type="module" src="https://cdn.voiceflow.com/widget/bundle.mjs"></script>
-  <script>
-    window.voiceflow?.chat?.load({
-      verify: { projectID: "68d9f429d1409c6c304d5485" },
-      url: "https://general-runtime.voiceflow.com",
-      versionID: "68d9f429d1409c6c304d5486",
-      render: { mode: "embedded", target: document.getElementById("vf-chat") },
-      autostart: true
-    });
+  <!-- Your widget-next loader (kept) -->
+  <script type="text/javascript">
+    (function(d, t) {
+      var v = d.createElement(t), s = d.getElementsByTagName(t)[0];
+      v.onload = function() {
+        window.voiceflow.chat.load({
+          verify: { projectID: '68d9f429d1409c6c304d5485' },
+          url: 'https://general-runtime.voiceflow.com',
+          versionID: '68d9f429d1409c6c304d5486',  // explicit version
+          voice: { url: 'https://runtime-api.voiceflow.com' },
+          render: { mode: 'embedded', target: document.getElementById('vf-chat') },
+          autostart: true
+        });
+      };
+      v.src = 'https://cdn.voiceflow.com/widget-next/bundle.mjs';
+      v.type = 'text/javascript';
+      s.parentNode.insertBefore(v, s);
+    })(document, 'script');
   </script>
 
-  <!-- PTT that types & sends -->
+  <!-- Push-to-Talk (iframe-safe: send via widget API) -->
   <script>
-    (function(){
+    (function () {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if(!SR){ console.warn('Web Speech API not supported'); return; }
-      let rec, isRec=false, text='';
+      if (!SR) { console.warn('Web Speech API not supported. Use Chrome/Edge.'); return; }
 
-      const btn=document.createElement('button');
-      btn.className='ptt-btn'; btn.textContent='🎤'; document.body.appendChild(btn);
-
-      function getEl(){
-        const root=document.getElementById('vf-chat');
-        return {
-          input: root.querySelector('textarea, [role="textbox"]'),
-          send: root.querySelector('button[aria-label="Send"],button[type="submit"]')
-        };
+      // Wait for the widget API so send() is available
+      function waitForChat(maxMs = 7000) {
+        return new Promise((resolve, reject) => {
+          const start = performance.now();
+          (function tick() {
+            if (window.voiceflow && window.voiceflow.chat && typeof window.voiceflow.chat.send === 'function') return resolve();
+            if (performance.now() - start > maxMs) return reject(new Error('Voiceflow chat API not ready'));
+            requestAnimationFrame(tick);
+          })();
+        });
       }
-      function fill(t){ const {input}=getEl(); if(input){ input.value=t; input.dispatchEvent(new Event('input',{bubbles:true})); } }
-      function send(){ const {send}=getEl(); if(send){ send.click(); } }
 
-      function start(){
-        if(isRec) return; isRec=true; text='';
-        rec=new SR(); rec.lang='en-AU'; rec.interimResults=true; rec.continuous=true;
-        rec.onresult=e=>{
-          let interim=''; for(let i=e.resultIndex;i<e.results.length;i++){
-            const seg=e.results[i][0].transcript;
-            if(e.results[i].isFinal) text+=seg+' '; else interim+=seg;
+      let isRecording = false, rec = null, finalText = '', interimText = '';
+
+      // UI: mic button
+      const btn = document.createElement('button');
+      btn.className = 'ptt-btn'; btn.title = 'Push-to-Talk'; btn.innerHTML = '🎤';
+      document.body.appendChild(btn);
+
+      // UI: transcript HUD (shows interim + final)
+      const hud = document.createElement('div');
+      hud.className = 'hud'; hud.textContent = '';
+      document.body.appendChild(hud);
+      const showHUD = s => hud.classList.toggle('show', !!s);
+      const updateHUD = () => { hud.textContent = (finalText + (interimText ? (' ' + interimText) : '')).trim(); };
+
+      function sendDirect(msg) {
+        try {
+          window.voiceflow.chat.send({ type: 'message', payload: { message: msg } });
+        } catch (e) {
+          console.warn('voiceflow.chat.send failed:', e);
+        }
+      }
+
+      function start() {
+        if (isRecording) return;
+        isRecording = true; finalText = ''; interimText = '';
+        rec = new SR(); rec.lang = 'en-AU'; rec.interimResults = true; rec.continuous = true;
+
+        rec.onresult = (e) => {
+          interimText = '';
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const seg = e.results[i][0].transcript;
+            if (e.results[i].isFinal) finalText += seg + ' ';
+            else interimText += seg;
           }
-          fill(text+interim);
+          updateHUD();
         };
-        rec.onend=()=>{ if(isRec) stop(); }; rec.start(); btn.classList.add('rec');
+        rec.onerror = () => stop(true);
+        rec.onend = () => { if (isRecording) stop(); };
+
+        try { rec.start(); btn.classList.add('rec'); showHUD(true); }
+        catch { isRecording = false; showHUD(false); }
       }
-      function stop(){
-        if(!isRec) return; isRec=false; try{rec.stop();}catch{}
-        const t=text.trim(); if(t){ fill(t); send(); } btn.classList.remove('rec'); text='';
+
+      function stop(force=false) {
+        if (!isRecording && !force) return;
+        isRecording = false; btn.classList.remove('rec'); showHUD(false);
+        try { rec && rec.stop(); } catch {}
+        const text = (finalText || interimText || '').trim();
+        if (text) {
+          waitForChat().then(() => sendDirect(text)).catch(() => console.warn('Chat not ready; message dropped:', text));
+        }
+        rec = null; finalText = ''; interimText = '';
       }
-      addEventListener('keydown',e=>{ if(e.code==='Space'&&!e.repeat){ e.preventDefault(); start(); } }, {passive:false});
-      addEventListener('keyup',e=>{ if(e.code==='Space'){ e.preventDefault(); stop(); } }, {passive:false});
-      btn.onclick=()=> isRec?stop():start();
+
+      function isTyping() {
+        const ae = document.activeElement; if (!ae) return false;
+        const tag = (ae.tagName||'').toLowerCase();
+        return ae.isContentEditable || tag==='textarea' || (tag==='input' && /text|search|email|tel|url/i.test(ae.type||'text'));
+      }
+
+      // Spacebar + mic button toggle
+      addEventListener('keydown',(e)=>{ if (e.code==='Space' && !e.repeat && !isTyping()){ e.preventDefault(); start(); } }, {passive:false});
+      addEventListener('keyup',(e)=>{ if (e.code==='Space'){ e.preventDefault(); stop(); } }, {passive:false});
+      btn.addEventListener('click', () => (isRecording ? stop() : start()));
     })();
   </script>
 </body>
