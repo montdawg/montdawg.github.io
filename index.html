@@ -1,56 +1,16 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Voiceflow + Push-to-Talk</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-</head>
-<body style="margin:0;font-family:sans-serif;background:#0f172a;color:#eee;">
-  <h1 style="padding:10px;">Voiceflow Chat (with Push-to-Talk)</h1>
-  <div id="vf-chat" style="height:75vh;min-height:500px;background:#111;border-radius:12px;margin:10px;"></div>
-
-  <!-- Voiceflow widget (stable bundle, embedded) -->
-  <script type="module" src="https://cdn.voiceflow.com/widget/bundle.mjs"></script>
-  <script>
-    window.voiceflow?.chat?.load({
-      verify: { projectID: "68d9f429d1409c6c304d5485" },
-      url: "https://general-runtime.voiceflow.com",
-      versionID: "68d9f429d1409c6c304d5486",   // or "production"
-      render: { mode: "embedded", target: document.getElementById("vf-chat") },
-      autostart: true
-    });
-  </script>
-
-  <!-- Push-to-Talk -->
-  <script>
-    (function(){
-      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) { console.warn("No Web Speech API support."); return; }
-      let rec, isRec=false, text="";
-
-      const btn=document.createElement("button");
-      btn.textContent="🎤"; btn.style.cssText="position:fixed;right:20px;bottom:20px;width:60px;height:60px;border-radius:50%;font-size:24px;background:#2563eb;color:#fff;border:none;cursor:pointer;z-index:9999";
-      document.body.appendChild(btn);
-
-      function getEl(){ 
-        const root=document.querySelector('#vf-chat'); 
-        return {
-          input: root.querySelector("textarea, [role='textbox']"),
-          send: root.querySelector("button[aria-label='Send'],button[type='submit']")
-        };
+<script type="text/javascript">
+  (function(d, t) {
+      var v = d.createElement(t), s = d.getElementsByTagName(t)[0];
+      v.onload = function() {
+        window.voiceflow.chat.load({
+          verify: { projectID: '68d9f429d1409c6c304d5485' },
+          url: 'https://general-runtime.voiceflow.com',
+          versionID: 'production',
+          voice: {
+            url: "https://runtime-api.voiceflow.com"
+          }
+        });
       }
-      function fill(t){ const {input}=getEl(); if(input){ input.value=t; input.dispatchEvent(new Event('input',{bubbles:true})); } }
-      function send(){ const {send}=getEl(); if(send) send.click(); }
-
-      function start(){ if(isRec) return; isRec=true;text="";rec=new SR();rec.lang="en-AU";rec.interimResults=true;rec.continuous=true;
-        rec.onresult=e=>{let interim="";for(let i=e.resultIndex;i<e.results.length;i++){const seg=e.results[i][0].transcript;if(e.results[i].isFinal) text+=seg+" "; else interim+=seg;} fill(text+interim);};
-        rec.onend=()=>{if(isRec) stop();}; rec.start(); btn.style.background="#ef4444";}
-      function stop(){ if(!isRec) return; isRec=false;rec.stop(); fill(text.trim()); if(text.trim()) send(); btn.style.background="#2563eb"; }
-
-      window.addEventListener("keydown",e=>{ if(e.code==="Space"&&!e.repeat){ e.preventDefault(); start(); }});
-      window.addEventListener("keyup",e=>{ if(e.code==="Space"){ e.preventDefault(); stop(); }});
-      btn.onclick=()=> isRec?stop():start();
-    })();
-  </script>
-</body>
-</html>
+      v.src = "https://cdn.voiceflow.com/widget-next/bundle.mjs"; v.type = "text/javascript"; s.parentNode.insertBefore(v, s);
+  })(document, 'script');
+</script>
